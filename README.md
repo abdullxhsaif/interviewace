@@ -1,6 +1,6 @@
 # InterviewAce — AI Interview Prep
 
-**Live:** https://interviewace.vercel.app *(update to the deployed URL)*
+**Live:** https://interviewace-lyart.vercel.app
 
 InterviewAce is your AI interview coach. Paste a job title or a full job description and it
 generates a tailored prep pack: realistic interview questions, strong model answers (STAR-structured
