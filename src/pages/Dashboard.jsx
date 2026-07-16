@@ -27,17 +27,25 @@ export default function Dashboard() {
     setError('')
     if (text.trim().length < 3) { setError('Please enter a job title or paste a job description.'); return }
     if (noCredits) { setError('You’re out of credits. Upgrade to keep prepping.'); return }
+    const currentUser = auth?.currentUser
+    if (!currentUser) { setError('Your session has expired — please sign in again.'); return }
     setLoading(true)
     setResult(null)
     try {
       const payload = level ? `Seniority: ${level}\n\nRole / Job description:\n${text}` : text
-      const token = await auth.currentUser.getIdToken()
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: payload }),
-      })
-      const data = await res.json()
+      const callApi = async (forceRefresh) => {
+        const token = await currentUser.getIdToken(forceRefresh)
+        return fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ text: payload }),
+        })
+      }
+      // A cached ID token can be briefly stale; if the server rejects it,
+      // force a refresh and retry once before surfacing an auth error.
+      let res = await callApi(false)
+      if (res.status === 401) res = await callApi(true)
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Generation failed')
       setResult(data)
       await decrementCredit()
