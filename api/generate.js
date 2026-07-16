@@ -37,7 +37,7 @@ Return ONLY valid JSON (no markdown fences) with this exact shape:
   ],
   "researchAreas": ["specific topic or skill to review before the interview", "another"]
 }
-Generate 6-9 questions with a realistic mix of categories for this role. Be specific to the role and level, practical, and encouraging. If the input is not a job/role, set role to "General" and still return useful general interview questions.`
+Generate 6-9 questions with a realistic mix of categories for this role. Keep each modelAnswer concise (2-4 sentences). Be specific to the role and level, practical, and encouraging. If the input is not a job/role, set role to "General" and still return useful general interview questions.`
 
 async function callPollinations(userPrompt, apiKey) {
   const body = {
@@ -51,7 +51,7 @@ async function callPollinations(userPrompt, apiKey) {
     // previous "unexpected response" 502s). reasoning_effort keeps the
     // model from burning the token budget on hidden reasoning.
     response_format: { type: 'json_object' },
-    max_tokens: 4000,
+    max_tokens: 8000,
     reasoning_effort: 'low',
   }
   const headers = { 'Content-Type': 'application/json' }
