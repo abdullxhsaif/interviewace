@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── InterviewAce ─────────────────────────────────────────────
+    // Append this block alongside existing product rules in the
+    // shared Firebase project (postcraft-ai-75e46). Do not remove
+    // the PostCraft (`users`) or ClauseCheck (`clausecheck_users`) blocks.
+    match /interviewace_users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Update allowed only if plan unchanged and credits never increase (decrease-only)
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.plan == resource.data.plan
+        && request.resource.data.credits <= resource.data.credits;
+      allow delete: if false;
+    }
+  }
+}
