@@ -46,6 +46,13 @@ async function callPollinations(userPrompt, apiKey) {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
+    // Force a single clean JSON object and give it enough room so a full
+    // 6-9 question pack is never truncated mid-response (the cause of the
+    // previous "unexpected response" 502s). reasoning_effort keeps the
+    // model from burning the token budget on hidden reasoning.
+    response_format: { type: 'json_object' },
+    max_tokens: 4000,
+    reasoning_effort: 'low',
   }
   const headers = { 'Content-Type': 'application/json' }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
@@ -60,20 +67,66 @@ async function callPollinations(userPrompt, apiKey) {
   }
   // fallback to GET endpoint
   const enc = encodeURIComponent(`${SYSTEM_PROMPT}\n\nROLE / JOB DESCRIPTION:\n${userPrompt}`)
-  const res2 = await fetch(`https://text.pollinations.ai/${enc}?model=openai`)
+  const res2 = await fetch(`https://text.pollinations.ai/${enc}?model=openai&json=true`)
   return res2.ok ? await res2.text() : ''
+}
+
+// Balance any unclosed strings/objects/arrays so a slightly truncated
+// response can still be parsed. Trailing incomplete tokens are dropped.
+function repairJson(s) {
+  let inStr = false, esc = false
+  const stack = []
+  let safe = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') { inStr = false; safe = i + 1 }
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']')
+    else if (c === '}' || c === ']') { stack.pop(); safe = i + 1 }
+    else if (c === ',') safe = i // drop the incomplete item after the last comma
+  }
+  let out = s.slice(0, safe)
+  // rebuild the open-structure stack for the trimmed string
+  inStr = false; esc = false
+  const st2 = []
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === '{' || c === '[') st2.push(c === '{' ? '}' : ']')
+    else if (c === '}' || c === ']') st2.pop()
+  }
+  if (inStr) out += '"'
+  for (let i = st2.length - 1; i >= 0; i--) out += st2[i]
+  return out
 }
 
 function extractJson(text) {
   if (!text) return null
   let t = text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim()
   const start = t.indexOf('{')
+  if (start === -1) return null
+  t = t.slice(start)
   const end = t.lastIndexOf('}')
-  if (start === -1 || end === -1) return null
+  const candidate = end !== -1 ? t.slice(0, end + 1) : t
   try {
-    return JSON.parse(t.slice(start, end + 1))
+    return JSON.parse(candidate)
   } catch {
-    return null
+    try {
+      return JSON.parse(repairJson(t))
+    } catch {
+      return null
+    }
   }
 }
 
@@ -87,6 +140,10 @@ export default async function handler(req, res) {
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (!token) {
       res.status(401).json({ error: 'Missing auth token' })
+      return
+    }
+    if (!PROJECT_ID) {
+      res.status(500).json({ error: 'Server is misconfigured (missing project id).' })
       return
     }
     let uid
